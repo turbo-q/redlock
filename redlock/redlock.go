@@ -17,9 +17,16 @@ var rss = []string{
 }
 
 const (
-	connTimeout   = 30 * time.Millisecond
+	connTimeout = 30 * time.Millisecond
+	// 释放锁lua脚本
 	releaseScript = `if redis.call("get",KEYS[1]) == ARGV[1] then
 						return redis.call("del",KEYS[1])
+					else
+						return 0
+					end`
+	// 看门狗续期脚本
+	renewScript = `if redis.call("get",KEYS[1]) == ARGV[1] then
+						return redis.call("expire",KEYS[1],30000)
 					else
 						return 0
 					end`
@@ -60,19 +67,23 @@ func createPool(addr string, opts ...redis.DialOption) (*redis.Pool, error) {
 }
 
 type RedLock struct {
-	K string
-	V string // 值使用unique random value
+	K   string
+	V   string // 值使用unique random value
+	Cfg Config
+}
 
+type Config struct {
+	Timeout int // 有效时间
 }
 
 // 获取锁
-func (rl *RedLock) SetNX(timeout int) bool {
+func (rl *RedLock) Lock() bool {
 	start := time.Now()
 
 	var successNum int // 设置成功的节点数
 	for _, pool := range pools {
 		conn := pool.Get()
-		state, err := redis.String(conn.Do("SET", rl.K, rl.V, "NX", "PX", timeout))
+		state, err := redis.String(conn.Do("SET", rl.K, rl.V, "NX", "PX", rl.Cfg.Timeout))
 		if err != nil && err != redis.ErrNil {
 			fmt.Println(err)
 		}
@@ -83,8 +94,8 @@ func (rl *RedLock) SetNX(timeout int) bool {
 
 	threshold := len(pools)/2 + 1 // 设置成功的阈值
 	// 成功数大于一半，并且总的消耗小于valid time
-	fmt.Println(successNum, threshold, time.Since(start) <= time.Duration(timeout))
-	if successNum >= threshold && time.Since(start).Milliseconds() <= int64(timeout) {
+	fmt.Println(successNum, threshold, time.Since(start) <= time.Duration(rl.Cfg.Timeout))
+	if successNum >= threshold && time.Since(start).Milliseconds() <= int64(rl.Cfg.Timeout) {
 		return true
 	}
 

@@ -19,12 +19,18 @@ func main() {
 	for i := 0; i < gonum; i++ {
 		go func(i int) {
 			var ok bool
-			var rl *redlock.RedLock
+			var rl *redlock.RedLock = &redlock.RedLock{
+				K: k,
+				V: helper.UUID(),
+				Cfg: redlock.Config{
+					Timeout: 30000,
+				},
+			}
 			defer wg.Done()
 			// 没获得锁则轮询拿锁
 			for !ok {
 				fmt.Printf("goroutine %d获取锁失败\n", i)
-				rl, ok = setnx(k, 30000)
+				ok = rl.Lock()
 			}
 			defer rl.Release()
 
@@ -38,12 +44,4 @@ func main() {
 	wg.Wait()
 
 	fmt.Printf("final share value %d", share)
-}
-
-func setnx(k string, timeout int) (*redlock.RedLock, bool) {
-	var rl *redlock.RedLock = new(redlock.RedLock)
-	rl.K = k
-	rl.V = helper.UUID()
-
-	return rl, rl.SetNX(timeout)
 }
