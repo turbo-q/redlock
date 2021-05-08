@@ -1,0 +1,7 @@
+# github.com/garyburd/redigo v1.6.2
+## explicit
+github.com/garyburd/redigo/internal
+github.com/garyburd/redigo/redis
+# github.com/google/uuid v1.2.0
+## explicit
+github.com/google/uuid
